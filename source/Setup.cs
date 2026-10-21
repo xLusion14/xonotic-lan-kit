@@ -24,6 +24,7 @@ static class Setup
     const string ZipSha512 = "cb39879e96f19abb2877588c2d50c5d3e64dd68153bec3dd1bebedf4d765e506afa419c28381d7005aed664cb1a042571c132b5b319e4308cab67745d996c2a6";
     const string InstallingMarker = ".lan-installing";
     const string PlayerExe = "Xonotic-Player-Setup.exe";
+    const string PanelExe = "Xonotic Server.exe";
 
 #if SERVER
     const string Title = "Xonotic LAN - SERVER Setup (host only)";
@@ -67,26 +68,42 @@ static class Setup
     {
 #if SERVER
         // Ask first so a player who grabbed the wrong exe doesn't end up hosting. Skipped once this laptop is the server.
-        if (!File.Exists(Path.Combine(Target, "start-server.bat")) && !ConfirmHost()) return;
+        bool isHost = File.Exists(Path.Combine(Target, PanelExe)) || File.Exists(Path.Combine(Target, "start-server.bat"));
+        if (!isHost && !ConfirmHost()) return;
+        if (Process.GetProcessesByName(Path.GetFileNameWithoutExtension(PanelExe)).Length > 0)
+            throw new Exception("The Xonotic Server window is open. Close it first, then run this setup again.");
 #endif
         InstallGame();
         WriteFile(Path.Combine(Target, @"data\autoexec\lan.cfg"), LanCfg);
+        WriteFile(Path.Combine(Target, @"data\autoexec\lan-controller.cfg"), ControllerCfg);
         WriteFile(Path.Combine(Target, @"data\autoexec\lan-firstrun.cfg"), FirstRunCfg());
         WriteResource("zzz-lan-menu.pk3", Path.Combine(Target, @"data\zzz-lan-menu.pk3"));
         SetDpiAware(Path.Combine(Target, "xonotic.exe"));
         if (Shortcuts) CreateShortcut("Play Xonotic", Path.Combine(Target, "xonotic.exe"));
-        Step("LAN main menu, LAN settings and screen scaling fix applied.");
+        Step("LAN main menu, controller preset, LAN settings and screen scaling fix applied.");
 
 #if SERVER
         string cfg = Path.Combine(Target, @"data\server.cfg");
         if (File.Exists(cfg)) Step("Keeping your existing server settings (data\\server.cfg).");
         else WriteFile(cfg, ServerCfg);
-        string bat = Path.Combine(Target, "start-server.bat");
-        WriteFile(bat, StartServerBat);
-        if (Shortcuts) CreateShortcut("Start Xonotic Server", bat);
-        Step("Server files ready.");
+        string panel = Path.Combine(Target, PanelExe);
+        WriteResource(PanelExe, panel);
+        if (Shortcuts)
+        {
+            // the panel replaces the old command-window shortcut
+            string old = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Start Xonotic Server.lnk");
+            if (File.Exists(old)) File.Delete(old);
+            CreateShortcut("Xonotic Server", panel);
+        }
+        Step("Server control panel installed.");
         Console.WriteLine();
-        StartServer(bat);
+        Done("Opening the Xonotic Server window. It starts the server for you.");
+        Console.WriteLine("Keep that window open while people play. Next time, use \"Xonotic Server\" on the desktop.");
+        Console.WriteLine("If Windows Firewall asks about xonotic-dedicated, click Allow.");
+        Console.WriteLine();
+        Console.WriteLine("Players install with " + PlayerExe + ".");
+        Console.WriteLine("To play on this laptop too, use \"Play Xonotic\" on the desktop.");
+        Process.Start(new ProcessStartInfo(panel) { WorkingDirectory = Target });
 #else
         Console.WriteLine();
         Done("The game is installed. Use \"Play Xonotic\" on the desktop to start it.");
@@ -314,77 +331,6 @@ static class Setup
         return false;
     }
 
-    static void StartServer(string bat)
-    {
-        if (Process.GetProcessesByName("xonotic-dedicated").Length > 0)
-            Step("The server is already running.");
-        else
-        {
-            Console.WriteLine("Starting the server in its own window (keep that window open while you play)...");
-            Console.WriteLine("If Windows Firewall asks about xonotic-dedicated, click Allow.");
-            Process.Start(new ProcessStartInfo("cmd.exe", "/c \"\"" + bat + "\"\"") { WorkingDirectory = Target, UseShellExecute = true });
-        }
-
-        string status = null;
-        for (int i = 0; i < 30 && status == null; i++) { Thread.Sleep(1000); status = QueryServer(); }
-        Console.WriteLine();
-        if (status == null)
-        {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("The server didn't answer within 30 seconds. Check its window for errors.");
-            Console.ResetColor();
-            return;
-        }
-        Done("Server is up: " + status);
-        Console.WriteLine();
-        Console.WriteLine("Players pick \"Work LAN\" from the games list and click Join,");
-        Console.WriteLine("or open the console with the ` key and type one of:");
-        foreach (string ip in LanAddresses()) Console.WriteLine("    connect " + ip);
-        Console.WriteLine();
-        Console.WriteLine("Players install with " + PlayerExe + ".");
-        Console.WriteLine("To play on this laptop too, use \"Play Xonotic\" on the desktop.");
-        Console.WriteLine("To stop the server, close its window.");
-    }
-
-    static string QueryServer()
-    {
-        try
-        {
-            using (var udp = new UdpClient())
-            {
-                udp.Client.ReceiveTimeout = 1000;
-                udp.Connect("127.0.0.1", 26000);
-                byte[] q = new byte[] { 255, 255, 255, 255 }.Concat(Encoding.ASCII.GetBytes("getinfo lan")).ToArray();
-                udp.Send(q, q.Length);
-                IPEndPoint ep = null;
-                string[] kv = Encoding.ASCII.GetString(udp.Receive(ref ep)).Split('\n')[1].TrimStart('\\').Split('\\');
-                string host = "", map = "", mode = "";
-                for (int i = 0; i + 1 < kv.Length; i += 2)
-                {
-                    if (kv[i] == "hostname") host = kv[i + 1];
-                    else if (kv[i] == "mapname") map = kv[i + 1];
-                    else if (kv[i] == "qcstatus") mode = kv[i + 1].Split(':')[0];
-                }
-                if (map.StartsWith("_init")) return null; // still on the boot map, the real one isn't loaded yet
-                return "\"" + host + "\", " + mode + " on " + map;
-            }
-        }
-        catch { return null; }
-    }
-
-    static string[] LanAddresses()
-    {
-        // Real network adapters only: ones with a default gateway (skips virtual Hyper-V/VPN switches).
-        return NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-            .Select(n => n.GetIPProperties())
-            .Where(p => p.GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork))
-            .SelectMany(p => p.UnicastAddresses)
-            .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
-            .Select(a => a.Address.ToString())
-            .ToArray();
-    }
-
     const string ServerCfg = @"// Work LAN Xonotic server
 
 hostname ""Work LAN""
@@ -393,9 +339,9 @@ port 26000
 maxplayers 16
 sv_motd ""Welcome to the work LAN. Be nice.""
 
-// Team Deathmatch rotation (change gametype to dm, ctf or ca for other modes)
+// Team Deathmatch rotation. Change the mode, maps and limits in the Xonotic Server window.
 gametype tdm
-g_maplist ""stormkeep implosion solarium catharsis boil afterslime""
+g_maplist ""afterslime boil implosion solarium stormkeep""
 g_maplist_shuffle 1
 timelimit_override 10
 fraglimit_override 50
@@ -408,24 +354,6 @@ skill 4                  // bot difficulty 0-10
 // rcon_password ""change-me""
 ";
 
-    const string StartServerBat = @"@echo off
-rem Start the Xonotic LAN server. Put this file in the Xonotic folder (next to xonotic.exe).
-cd /d ""%~dp0""
-
-set EXE=
-for %%F in (xonotic-x64-dedicated.exe xonotic-x86_64-dedicated.exe xonotic-dedicated.exe) do if exist ""%%F"" if not defined EXE set EXE=%%F
-
-if not defined EXE (
-  echo Could not find the Xonotic dedicated server exe in %CD%
-  pause
-  exit /b 1
-)
-
-echo Starting %EXE% ... other players join via Multiplayer ^> Join, or connect to this laptop's IP.
-ipconfig | findstr /c:""IPv4""
-""%~dp0%EXE%"" -sessionid server +serverconfig server.cfg
-pause
-";
 #endif
 
     const string LanCfg = @"// Work LAN settings, run automatically at every launch (game and server).
@@ -442,5 +370,37 @@ set sv_masterextra3 """"
 // Always fullscreen at the screen's own resolution, whatever laptop this runs on
 vid_fullscreen 1
 vid_desktopfullscreen 1
+
+// Server: answer every server-list query. The default 1-second flood block drops the server browser's
+// follow-up query, so the server vanished from the games list a few seconds after it appeared.
+set net_getstatusfloodblockingtimeout 0
+";
+
+    // Xbox (XInput) controller preset. The engine sends Xbox buttons as X360_* keys, which Xonotic 0.8.6
+    // leaves unbound. Runs every launch, so these buttons always match the README.
+    const string ControllerCfg = @"// Xbox controller preset, run automatically at every launch.
+// Mouse and keyboard keep working as normal; without a controller this does nothing.
+joy_enable 1
+
+// Sticks: left moves, right looks. Look speed at full tilt is these numbers times the default
+// turn speed (140 degrees a second); the engine's default of 1 is too slow for a shooter.
+joy_x360_sensitivityyaw -2.2
+joy_x360_sensitivitypitch -1.6
+joy_x360_deadzoneyaw 0.18
+joy_x360_deadzonepitch 0.18
+
+bind X360_RIGHT_TRIGGER +fire
+bind X360_LEFT_TRIGGER +fire2
+bind X360_A +jump
+bind X360_B +crouch
+bind X360_X reload
+bind X360_Y weaplast
+bind X360_RIGHT_SHOULDER weapnext
+bind X360_LEFT_SHOULDER weapprev
+bind X360_RIGHT_THUMB +zoom
+bind X360_DPAD_UP weapbest
+bind X360_DPAD_DOWN dropweapon
+bind X360_BACK +showscores
+bind X360_START togglemenu
 ";
 }
