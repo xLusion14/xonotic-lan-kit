@@ -1,6 +1,6 @@
-// Xonotic LAN kit installer. Builds two programs from this one file:
-//   Player setup:  csc Setup.cs                 -> installs the game, LAN settings, "Play Xonotic" shortcut
-//   Server setup:  csc /define:SERVER Setup.cs  -> all of the above, plus the server files and starts the server
+// Xonotic LAN kit installer. Builds two programs from this one file (see build.bat):
+//   Xonotic-Player-Setup.exe            (csc Setup.cs)                -> installs the game, LAN settings, "Play Xonotic" shortcut
+//   Xonotic-Server-Setup-HOST-ONLY.exe  (csc /define:SERVER Setup.cs) -> all of the above, plus the server files and starts the server
 // Both expect xonotic-0.8.6.zip in the same folder as the exe (only needed for the first install).
 // Options for testing: --target <folder> installs somewhere else, --no-shortcuts skips desktop shortcuts.
 
@@ -23,11 +23,12 @@ static class Setup
     const string ZipName = "xonotic-0.8.6.zip";
     const string ZipSha512 = "cb39879e96f19abb2877588c2d50c5d3e64dd68153bec3dd1bebedf4d765e506afa419c28381d7005aed664cb1a042571c132b5b319e4308cab67745d996c2a6";
     const string InstallingMarker = ".lan-installing";
+    const string PlayerExe = "Xonotic-Player-Setup.exe";
 
 #if SERVER
-    const string Title = "Xonotic LAN - Server Setup";
+    const string Title = "Xonotic LAN - SERVER Setup (host only)";
 #else
-    const string Title = "Xonotic LAN - Game Setup";
+    const string Title = "Xonotic LAN - Player Setup";
 #endif
 
     static string Target = @"C:\Games\Xonotic";
@@ -64,6 +65,10 @@ static class Setup
 
     static void Run()
     {
+#if SERVER
+        // Ask first so a player who grabbed the wrong exe doesn't end up hosting. Skipped once this laptop is the server.
+        if (!File.Exists(Path.Combine(Target, "start-server.bat")) && !ConfirmHost()) return;
+#endif
         InstallGame();
         WriteFile(Path.Combine(Target, @"data\autoexec\lan.cfg"), LanCfg);
         SetDpiAware(Path.Combine(Target, "xonotic.exe"));
@@ -189,6 +194,22 @@ static class Setup
 #if SERVER
     // ---- Server start ----
 
+    static bool ConfirmHost()
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("This is the SERVER setup. Only ONE laptop - the host - needs it.");
+        Console.WriteLine();
+        Console.WriteLine("Just want to play? Close this window and run " + PlayerExe + " instead.");
+        Console.ResetColor();
+        Console.WriteLine();
+        Console.Write("Make this laptop the server? Type Y and press Enter: ");
+        string answer = Console.ReadLine();
+        Console.WriteLine();
+        if (answer != null && answer.Trim().StartsWith("y", StringComparison.OrdinalIgnoreCase)) return true;
+        Console.WriteLine("Cancelled. Nothing was changed.");
+        return false;
+    }
+
     static void StartServer(string bat)
     {
         if (Process.GetProcessesByName("xonotic-dedicated").Length > 0)
@@ -216,6 +237,7 @@ static class Setup
         Console.WriteLine("or open the console with the ` key and type one of:");
         foreach (string ip in LanAddresses()) Console.WriteLine("    connect " + ip);
         Console.WriteLine();
+        Console.WriteLine("Players install with " + PlayerExe + ".");
         Console.WriteLine("To play on this laptop too, use \"Play Xonotic\" on the desktop.");
         Console.WriteLine("To stop the server, close its window.");
     }
