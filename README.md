@@ -7,7 +7,7 @@ One-click setup for a [Xonotic](https://xonotic.org) LAN party on Windows laptop
 
 ## Get the kit ready (once)
 
-1. Download **Install Game.exe** and **Install and Start Server.exe** from this repo's [Releases](../../releases) page.
+1. Download **Install Game.exe** and **Install and Start Server.exe** from this repo's [Releases](../../releases) page. GitHub names them `Install.Game.exe` and `Install.and.Start.Server.exe`; that's fine, they work under any name.
 2. Download **xonotic-0.8.6.zip** (about 1.2 GB) from [xonotic.org/download](https://xonotic.org/download).
 3. Put all three files in one folder, then copy that folder to a USB stick or a shared drive.
 
