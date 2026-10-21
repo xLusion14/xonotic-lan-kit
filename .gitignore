@@ -1,0 +1,5 @@
+# The game download (1.2 GB) - get it from xonotic.org
+xonotic-*.zip
+
+# Built programs - published on the Releases page instead
+*.exe
