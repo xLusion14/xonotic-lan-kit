@@ -1,13 +1,12 @@
 XONOTIC WORK LAN KIT
 ====================
+The game is built into each setup file. Nothing else to download.
 
 JUST WANT TO PLAY?  Use ONLY:  Xonotic-Player-Setup.exe
 -------------------------------------------------------
-1. Copy Xonotic-Player-Setup.exe AND xonotic-0.8.6.zip to your laptop,
-   into the same folder.
-2. Double-click Xonotic-Player-Setup.exe. It takes under a minute.
-3. Double-click "Play Xonotic" on your desktop.
-4. Multiplayer > Join, then pick "Work LAN".
+1. Double-click Xonotic-Player-Setup.exe. It takes under a minute.
+2. Double-click "Play Xonotic" on your desktop.
+3. Multiplayer > Join, then pick "Work LAN".
    Not listed? Press the ` key (above Tab) and type:  connect <server IP>
    (ask the host for the IP)
 

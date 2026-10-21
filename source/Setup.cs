@@ -1,7 +1,7 @@
 // Xonotic LAN kit installer. Builds two programs from this one file (see build.bat):
 //   Xonotic-Player-Setup.exe            (csc Setup.cs)                -> installs the game, LAN settings, "Play Xonotic" shortcut
 //   Xonotic-Server-Setup-HOST-ONLY.exe  (csc /define:SERVER Setup.cs) -> all of the above, plus the server files and starts the server
-// Both expect xonotic-0.8.6.zip in the same folder as the exe (only needed for the first install).
+// build.bat appends xonotic-0.8.6.zip to both exes, so each is a single self-contained installer.
 // Options for testing: --target <folder> installs somewhere else, --no-shortcuts skips desktop shortcuts.
 
 using System;
@@ -111,47 +111,110 @@ static class Setup
             return;
         }
 
-        string zipPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ZipName);
-        if (!File.Exists(zipPath))
-            throw new Exception("Couldn't find " + ZipName + ". Put it in the same folder as this program and run it again.");
-
-        Console.Write("Checking the game download is genuine... ");
-        string hash;
-        using (var sha = SHA512.Create())
-        using (var fs = new FileStream(zipPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20))
-            hash = BitConverter.ToString(sha.ComputeHash(fs)).Replace("-", "").ToLowerInvariant();
-        if (hash != ZipSha512)
-            throw new Exception(ZipName + " doesn't match the official release. It may be damaged or incomplete - copy it again.");
-        Console.WriteLine("OK");
-
-        Directory.CreateDirectory(Target);
-        File.WriteAllText(Path.Combine(Target, InstallingMarker), "");
-        string root = Target.TrimEnd('\\') + "\\";
-        using (var zip = ZipFile.OpenRead(zipPath))
+        using (Stream payload = OpenPayload())
         {
-            // Skip the Mac app bundle and Unix symlinks; Windows doesn't use them.
-            var entries = zip.Entries.Where(e => e.FullName.StartsWith("Xonotic/")
-                && !e.FullName.StartsWith("Xonotic/Xonotic.app/")
-                && ((e.ExternalAttributes >> 16) & 0xF000) != 0xA000).ToList();
-            long total = entries.Sum(e => e.Length), done = 0;
-            int lastPct = -1;
-            foreach (var e in entries)
+            if (payload == null)
+                throw new Exception("This setup file doesn't contain the game. It may not have finished downloading - download it again.");
+
+            Console.Write("Checking the game files are genuine... ");
+            string hash;
+            using (var sha = SHA512.Create())
+                hash = BitConverter.ToString(sha.ComputeHash(payload)).Replace("-", "").ToLowerInvariant();
+            if (hash != ZipSha512)
+                throw new Exception("The game files don't match the official Xonotic release. The setup file may be damaged - download or copy it again.");
+            Console.WriteLine("OK");
+            payload.Position = 0;
+
+            Directory.CreateDirectory(Target);
+            File.WriteAllText(Path.Combine(Target, InstallingMarker), "");
+            string root = Target.TrimEnd('\\') + "\\";
+            using (var zip = new ZipArchive(payload, ZipArchiveMode.Read, true))
             {
-                string rel = e.FullName.Substring("Xonotic/".Length).Replace('/', '\\');
-                if (rel.Length == 0) continue;
-                string dest = Path.GetFullPath(Path.Combine(Target, rel));
-                if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
-                if (e.FullName.EndsWith("/")) { Directory.CreateDirectory(dest); continue; }
-                Directory.CreateDirectory(Path.GetDirectoryName(dest));
-                e.ExtractToFile(dest, true);
-                done += e.Length;
-                int pct = total == 0 ? 100 : (int)(done * 100 / total);
-                if (pct != lastPct) { Console.Write("\rInstalling Xonotic to " + Target + "... " + pct + "%"); lastPct = pct; }
+                // Skip the Mac app bundle and Unix symlinks; Windows doesn't use them.
+                var entries = zip.Entries.Where(e => e.FullName.StartsWith("Xonotic/")
+                    && !e.FullName.StartsWith("Xonotic/Xonotic.app/")
+                    && ((e.ExternalAttributes >> 16) & 0xF000) != 0xA000).ToList();
+                long total = entries.Sum(e => e.Length), done = 0;
+                int lastPct = -1;
+                foreach (var e in entries)
+                {
+                    string rel = e.FullName.Substring("Xonotic/".Length).Replace('/', '\\');
+                    if (rel.Length == 0) continue;
+                    string dest = Path.GetFullPath(Path.Combine(Target, rel));
+                    if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (e.FullName.EndsWith("/")) { Directory.CreateDirectory(dest); continue; }
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                    e.ExtractToFile(dest, true);
+                    done += e.Length;
+                    int pct = total == 0 ? 100 : (int)(done * 100 / total);
+                    if (pct != lastPct) { Console.Write("\rInstalling Xonotic to " + Target + "... " + pct + "%"); lastPct = pct; }
+                }
             }
         }
         File.Delete(Path.Combine(Target, InstallingMarker));
         Console.WriteLine();
         Step("Xonotic installed.");
+    }
+
+    // The game zip is appended to the end of this exe by build.bat (source\pack.ps1), followed by a
+    // 16-byte trailer: zip length (Int64, little-endian) + "XONLANK1". Falls back to the zip next to the exe.
+    const string PayloadMagic = "XONLANK1";
+
+    static Stream OpenPayload()
+    {
+        var self = new FileStream(Process.GetCurrentProcess().MainModule.FileName, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20);
+        if (self.Length > 16)
+        {
+            byte[] trailer = new byte[16];
+            self.Seek(-16, SeekOrigin.End);
+            int got = 0;
+            while (got < 16) { int n = self.Read(trailer, got, 16 - got); if (n == 0) break; got += n; }
+            long length = BitConverter.ToInt64(trailer, 0);
+            if (got == 16 && Encoding.ASCII.GetString(trailer, 8, 8) == PayloadMagic && length > 0 && length <= self.Length - 16)
+                return new SubStream(self, self.Length - 16 - length, length);
+        }
+        self.Dispose();
+
+        string zipPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ZipName);
+        return File.Exists(zipPath) ? new FileStream(zipPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20) : null;
+    }
+
+    // Read-only, seekable window onto part of another stream (the zip inside this exe).
+    sealed class SubStream : Stream
+    {
+        readonly Stream inner;
+        readonly long start, length;
+        long pos;
+
+        public SubStream(Stream inner, long start, long length) { this.inner = inner; this.start = start; this.length = length; }
+
+        public override bool CanRead { get { return true; } }
+        public override bool CanSeek { get { return true; } }
+        public override bool CanWrite { get { return false; } }
+        public override long Length { get { return length; } }
+        public override long Position { get { return pos; } set { pos = value; } }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            long left = length - pos;
+            if (left <= 0) return 0;
+            if (count > left) count = (int)left;
+            inner.Position = start + pos;
+            int n = inner.Read(buffer, offset, count);
+            pos += n;
+            return n;
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            pos = origin == SeekOrigin.Begin ? offset : origin == SeekOrigin.Current ? pos + offset : length + offset;
+            return pos;
+        }
+
+        public override void Flush() { }
+        public override void SetLength(long value) { throw new NotSupportedException(); }
+        public override void Write(byte[] buffer, int offset, int count) { throw new NotSupportedException(); }
+        protected override void Dispose(bool disposing) { if (disposing) inner.Dispose(); base.Dispose(disposing); }
     }
 
     static void SetDpiAware(string exe)
