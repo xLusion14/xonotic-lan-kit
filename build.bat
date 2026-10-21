@@ -10,7 +10,7 @@ if not exist xonotic-0.8.6.zip (
 )
 
 set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
-set OPTS=/nologo /optimize+ /target:exe /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /win32icon:source\xonotic.ico
+set OPTS=/nologo /optimize+ /target:exe /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /r:System.Management.dll /win32icon:source\xonotic.ico /resource:menu\zzz-lan-menu.pk3,zzz-lan-menu.pk3
 set PACK=powershell -NoProfile -ExecutionPolicy Bypass -File source\pack.ps1
 
 "%CSC%" %OPTS% /out:Xonotic-Player-Setup.exe source\Setup.cs || goto fail

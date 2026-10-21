@@ -6,9 +6,10 @@ JUST WANT TO PLAY?  Use ONLY:  Xonotic-Player-Setup.exe
 -------------------------------------------------------
 1. Double-click Xonotic-Player-Setup.exe. It takes under a minute.
 2. Double-click "Play Xonotic" on your desktop.
-3. Multiplayer > Join, then pick "Work LAN".
-   Not listed? Press the ` key (above Tab) and type:  connect <server IP>
-   (ask the host for the IP)
+3. The game opens on "Games on your network". Click "Work LAN", then "Join!".
+   Set your name under "Your player". The gear icon opens Settings;
+   click Close or anywhere outside the window to go back.
+   Not listed? Click Refresh, or type the host's IP in Address and click Join!
 
 Players: do NOT run the Server Setup. Only the host needs it.
 
@@ -31,7 +32,8 @@ GOOD TO KNOW
 - The game installs to C:\Games\Xonotic
 - The server list only shows games on your own network
 - The game runs fullscreen at the screen's own resolution
-- Weak laptop stuttering? In the game: Settings > Effects > Low
+- Weak laptop stuttering? Gear icon > Effects > Low
+- Text too big or small? Gear icon > Video > Font/UI size
 - "Windows protected your PC"? Click More info > Run anyway
 - Uninstall: delete C:\Games\Xonotic and the desktop shortcuts
 

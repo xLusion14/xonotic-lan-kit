@@ -71,9 +71,11 @@ static class Setup
 #endif
         InstallGame();
         WriteFile(Path.Combine(Target, @"data\autoexec\lan.cfg"), LanCfg);
+        WriteFile(Path.Combine(Target, @"data\autoexec\lan-firstrun.cfg"), FirstRunCfg());
+        WriteResource("zzz-lan-menu.pk3", Path.Combine(Target, @"data\zzz-lan-menu.pk3"));
         SetDpiAware(Path.Combine(Target, "xonotic.exe"));
         if (Shortcuts) CreateShortcut("Play Xonotic", Path.Combine(Target, "xonotic.exe"));
-        Step("LAN settings and screen scaling fix applied.");
+        Step("LAN main menu, LAN settings and screen scaling fix applied.");
 
 #if SERVER
         string cfg = Path.Combine(Target, @"data\server.cfg");
@@ -88,7 +90,7 @@ static class Setup
 #else
         Console.WriteLine();
         Done("The game is installed. Use \"Play Xonotic\" on the desktop to start it.");
-        Console.WriteLine("To join: Multiplayer > Join, then pick \"Work LAN\".");
+        Console.WriteLine("To join: pick \"Work LAN\" from the games list, then click Join.");
         Console.WriteLine();
         Console.Write("Start the game now? [Y/n] ");
         string answer = Console.ReadLine();
@@ -217,6 +219,34 @@ static class Setup
         protected override void Dispose(bool disposing) { if (disposing) inner.Dispose(); base.Dispose(disposing); }
     }
 
+    // Defaults for this laptop, applied on the game's first launch only so players can still change them:
+    // menu text size from the Windows display scaling, and Low effects when there's no dedicated graphics card.
+    static string FirstRunCfg()
+    {
+        int dpi = 96;
+        using (var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop\WindowMetrics"))
+            if (key != null && key.GetValue("AppliedDPI") is int) dpi = (int)key.GetValue("AppliedDPI");
+        string scale = dpi <= 120 ? "0" : dpi <= 168 ? "0.25" : "0.5"; // Medium / Large / Huge
+
+        string[] gpus = new string[0];
+        try
+        {
+            using (var search = new System.Management.ManagementObjectSearcher("SELECT Name FROM Win32_VideoController"))
+                gpus = search.Get().Cast<System.Management.ManagementBaseObject>().Select(g => (string)g["Name"] ?? "").ToArray();
+        }
+        catch { }
+        bool dedicated = gpus.Any(n => System.Text.RegularExpressions.Regex.IsMatch(n,
+            @"nvidia|geforce|quadro|radeon\s*(\(tm\)\s*)?(rx|pro)|arc\s*(\(tm\)\s*)?[ab]\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+
+        Step("Text size " + (scale == "0" ? "Medium" : scale == "0.25" ? "Large" : "Huge") + " (screen scaling " + (dpi * 100 / 96) + "%), "
+            + (dedicated ? "normal effects (graphics card found)." : "Low effects (no dedicated graphics card)."));
+        return "// Written by the setup for this laptop. Runs on the game's first launch only;\n"
+            + "// after that, Settings in the game are yours to change.\n"
+            + "alias _lan_firstrun_ \"menu_vid_scale " + scale + (dedicated ? "" : "; exec effects-low.cfg") + "; seta lan_firstrun_done 1\"\n"
+            + "alias _lan_firstrun_1 \"\"\n"
+            + "_lan_firstrun_${lan_firstrun_done ?}\n";
+    }
+
     static void SetDpiAware(string exe)
     {
         // Same as Properties > Compatibility > "Override high DPI scaling" > Application, for this user.
@@ -237,6 +267,17 @@ static class Setup
         t.InvokeMember("IconLocation", BindingFlags.SetProperty, null, sc, new object[] { Path.Combine(Target, "xonotic.exe") + ",0" });
         t.InvokeMember("Save", BindingFlags.InvokeMethod, null, sc, null);
         Step("Desktop shortcut \"" + name + "\" created.");
+    }
+
+    // Files embedded with csc /resource (see build.bat), e.g. the LAN main menu add-on built by menu\build-menu.ps1.
+    static void WriteResource(string name, string path)
+    {
+        using (Stream res = Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
+        {
+            if (res == null) throw new Exception("This setup file is missing " + name + ". Download it again.");
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            using (FileStream f = File.Create(path)) res.CopyTo(f);
+        }
     }
 
     static void WriteFile(string path, string text)
@@ -296,7 +337,7 @@ static class Setup
         }
         Done("Server is up: " + status);
         Console.WriteLine();
-        Console.WriteLine("Players join from Multiplayer > Join (look for \"Work LAN\"),");
+        Console.WriteLine("Players pick \"Work LAN\" from the games list and click Join,");
         Console.WriteLine("or open the console with the ` key and type one of:");
         foreach (string ip in LanAddresses()) Console.WriteLine("    connect " + ip);
         Console.WriteLine();

@@ -1,0 +1,29 @@
+#pragma once
+
+#include "dialog.qh"
+// Xonotic LAN kit main screen: games found on the network and the player profile,
+// with Settings (gear) and Quit opening as pop-ups. Replaces the five-panel nexposee.
+CLASS(XonoticLanMainDialog, XonoticDialog)
+	METHOD(XonoticLanMainDialog, fill, void(entity));
+	METHOD(XonoticLanMainDialog, keyDown, float(entity, float, float, float));
+	ATTRIB(XonoticLanMainDialog, title, string, _("Xonotic LAN"));
+	ATTRIB(XonoticLanMainDialog, color, vector, SKINCOLOR_DIALOG_MULTIPLAYER);
+	ATTRIB(XonoticLanMainDialog, intendedWidth, float, 0.96);
+	ATTRIB(XonoticLanMainDialog, rows, float, 24);
+	ATTRIB(XonoticLanMainDialog, columns, float, 6);
+	ATTRIB(XonoticLanMainDialog, closable, float, 0);
+ENDCLASS(XonoticLanMainDialog)
+
+#include "dialog_settings.qh"
+// Settings pop-up for the LAN main screen: same tabs, plus a Close button, and clicking outside it closes it.
+CLASS(XonoticLanSettingsDialog, XonoticSettingsDialog)
+	METHOD(XonoticLanSettingsDialog, fill, void(entity));
+	METHOD(XonoticLanSettingsDialog, mousePress, float(entity, vector));
+	ATTRIB(XonoticLanSettingsDialog, rows, float, 19);
+ENDCLASS(XonoticLanSettingsDialog)
+
+#include "button.qh"
+// Button with a gear icon that stays square whatever shape the button ends up on screen.
+CLASS(XonoticGearButton, XonoticButton)
+	METHOD(XonoticGearButton, draw, void(entity));
+ENDCLASS(XonoticGearButton)
